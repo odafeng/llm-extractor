@@ -1,0 +1,19 @@
+{
+    "file_id": "P001",
+    "histology": "Adenocarcinoma",
+    "grade": "Moderate",
+    "pT": "T3",
+    "pN": "N1a",
+    "nodes_exam": 31,
+    "nodes_pos": 1,
+    "tumor_size_cm": 3.2,
+    "LVI": "Negative",
+    "PNI": "Negative",
+    "Deposits": "Negative",
+    "Budding": "High",
+    "CRM_status": "Negative",
+    "CRM_dist_mm": null,
+    "Distal_dist_mm": 36,
+    "TME": "Complete",
+    "MMR": "pMMR"
+}
