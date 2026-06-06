@@ -74,21 +74,21 @@ Extract clinical data from the pathology report into a strict JSON format.
 {
   "tumor_found": true,            // Boolean. False if 'No residual tumor' / pT0 / pTX.
   "histology": "Adenocarcinoma",  // Null if tumor_found is false
-  "grade": "Moderate/Poor/Well",  // Null if tumor_found is false
+  "grade": "Well",                // Pick one: "Well", "Moderate", "Poor". Null if tumor_found is false
   "pT": "T3",
   "pN": "N1a",
   "nodes_exam": 15,
   "nodes_pos": 1,
-  "metastasis": "M0/M1",
+  "metastasis": "M0",             // Pick one: "M0", "M1"
   "tumor_size_cm": 3.5,
-  "LVI": "Positive/Negative",
-  "PNI": "Positive/Negative",
-  "Deposits": "Positive/Negative",
-  "Budding": "High/Intermediate/Low",
-  "TME": "Complete/Incomplete/Nearly complete",
-  "MMR": "pMMR/dMMR",
+  "LVI": "Positive",              // Pick one: "Positive", "Negative"
+  "PNI": "Negative",              // Pick one: "Positive", "Negative"
+  "Deposits": "Negative",         // Pick one: "Positive", "Negative"
+  "Budding": "Low",               // Pick one: "High", "Intermediate", "Low"
+  "TME": "Complete",              // Pick one: "Complete", "Incomplete", "Nearly complete"
+  "MMR": "pMMR",                  // Pick one: "pMMR", "dMMR"
 
-  "CRM_status": "Positive/Negative",
+  "CRM_status": "Negative",       // Pick one: "Positive", "Negative"
   "CRM_dist_mm": 2.0,             // Only if explicitly CRM/Radial
   "distal_margin_mm": 36,         // Only if explicitly Distal
   
