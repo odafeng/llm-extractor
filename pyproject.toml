@@ -5,6 +5,10 @@ description = "LLM pipeline that extracts structured data from rectal cancer pat
 requires-python = ">=3.11"
 readme = "README.md"
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
@@ -18,6 +22,7 @@ ignore = ["E501"]
 [tool.pyright]
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
+extraPaths = ["."]
 # 第三方 SDK（openai / google-generativeai 等）的型別 stub 與動態 client 介面常產生雜訊，降級為警告以免 CI 失敗
 reportArgumentType = "warning"
 reportPrivateImportUsage = "warning"

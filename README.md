@@ -1,26 +1,80 @@
 # LLM Pathology Extractor
 
-> 用 LLM 把**非結構化的直腸癌病理報告**萃取成**結構化 JSON / 表格**的 pipeline。
-> 支援**地端 (Ollama) 優先、雲端 (GPT / Claude / Gemini) fallback** 的雙軌架構，
-> 為「病患資料不能出院」的醫療場景設計。
+[![CI](https://github.com/odafeng/LLM_Extractor/actions/workflows/ci.yml/badge.svg)](https://github.com/odafeng/LLM_Extractor/actions/workflows/ci.yml)
+
+> 用 LLM 把**非結構化的直腸癌病理報告**萃取成**結構化資料表**的 pipeline。
+> 內建臨床導向的萃取規則，並採「**地端 (Ollama) 優先、雲端 (GPT / Claude / Gemini) fallback**」
+> 的雙軌架構，為「病患資料不能出院」的醫療場景設計。
 
 ---
+
+## 為什麼做這個
+
+把病理報告轉成可分析的結構化欄位（TNM 分期、CRM、TME、MMR、tumor budding…）
+傳統上靠人工逐份 chart abstraction，耗時且容易不一致。本專案把這個過程自動化：
+餵入報告原文，輸出一列一列、欄位固定的結構化結果，可直接進統計分析或 tumor registry。
+
+難點不在「呼叫 LLM」，而在報告的**自由文字充滿臨床陷阱**——同一個概念有多種寫法、
+margin 要分辨 CRM／distal／未指明、淋巴結要跨群組加總、addendum 會推翻原文。
+本專案的核心價值就在於把這些規則寫進 prompt（見 [`SYSTEM_PROMPT`](extract_patho_report.py)）。
 
 ## ⚠️ 重要聲明
 
-- **僅供研究用途**，輸出**不可**直接作為臨床診斷或治療決策依據，所有結果需由病理醫師人工複核。
-- 本 repo 內的病理報告（`for_study_deidentified/`）均已**去識別化**（移除病歷號等個資）。
-- 含真實病歷號或個資的檔案（對照金鑰、cohort 清單）一律**不進版控**（見 `.gitignore`），請妥善保管於本機。
-- 切勿將 API 金鑰寫死在程式碼中，一律使用 `.env.local`（已被 git 忽略）。
-
----
+- **僅供研究用途**，輸出**不可**直接作為臨床診斷或治療決策依據，須由病理醫師人工複核。
+- repo 內的病理報告（`for_study_deidentified/`）均已**去識別化**（移除病歷號等個資）。
+- 含真實病歷號／出生日期的檔案（對照金鑰、cohort 名冊）一律**不進版控**（見 `.gitignore`），請妥善保管於本機。
+- 切勿將 API 金鑰寫死在程式碼中，一律使用 `.env.local`（已被 git 忽略，並由 gitleaks 把關）。
 
 ## 功能特色
 
-- **臨床導向的萃取規則**：針對直腸癌 synoptic report，內建 margin 消歧義（CRM / Distal / closest margin）、淋巴結分組加總、報告區段衝突解決（Synoptic > Gross、Addendum > 原文）、Tumor budding 採 ITBCC 2016 標準。
-- **地端 + 雲端雙軌**：預設用地端 Ollama（`qwen2.5:14b`）；失敗時自動 fallback 雲端 GPT。可用 `USE_CLOUD_ONLY=1` 強制只用雲端。
-- **多模型橫向比較**：`LLM_validation.py` 可同時跑 GPT-5.1 / Claude / Gemini，輸出到同一份 Excel 的不同分頁，方便比對。
-- **隱私 by design**：去識別化與再識別金鑰分離保存。
+- **臨床導向的萃取規則**：margin 消歧義（CRM / Distal / closest margin）、淋巴結分組加總、
+  報告區段衝突解決（Synoptic > Gross、Addendum > 原文）、Tumor budding 採 ITBCC 2016 標準、
+  EMVI 與 LVI 分開判讀。
+- **地端 + 雲端雙軌**：預設用地端 Ollama（`qwen2.5:14b`）；失敗時自動 fallback 雲端 GPT。
+  可用 `USE_CLOUD_ONLY=1` 強制只用雲端。（背景見 [ADR-0001](docs/adr/0001-local-first-llm-with-cloud-fallback.md)）
+- **多模型橫向比較**：`LLM_validation.py` 可同時跑 GPT-5.1 / Claude / Gemini，輸出到同一份 Excel 的不同分頁。
+- **隱私 by design**：去識別化與再識別金鑰分離保存（見 [ADR-0002](docs/adr/0002-deidentification-with-separated-mapping-key.md)）。
+
+## 範例
+
+輸入（報告原文片段，`for_study_deidentified_txt/P001.txt`）：
+
+```
+1. Histological type: Adenocarcinoma, NOS
+2. Histological grade: Moderately differentiated (2 of 4 grade system)
+7. Distance of tumor from closest margin: 5 mm (distal cut end)
+8. Intactness of mesorectum: Nearly complete
+9. Lymphatic(L)/venous(V) invasion: Present(L1/V1)
+10 Extramural venous invasion: Not identified
+13 Tumor cell budding: Present; 12 buds; High score (10 or more)
+17 Lymph nodes, regional(5/16) and IMA(0/1): Metastatic adenocarcinoma (pN2a)
+```
+
+輸出（結構化 JSON 的一列）：
+
+```json
+{
+  "tumor_found": true,
+  "histology": "Adenocarcinoma",
+  "grade": "Moderate",
+  "pT": "T1",
+  "pN": "N2a",
+  "nodes_exam": 17,
+  "nodes_pos": 5,
+  "tumor_size_cm": 0.6,
+  "LVI": "Positive",
+  "EMVI": "Negative",
+  "Budding": "High",
+  "TME": "Nearly complete",
+  "MMR": "pMMR",
+  "CRM_status": "Negative",
+  "closest_margin_mm": 5,
+  "closest_margin_desc": "distal cut end"
+}
+```
+
+注意：淋巴結 `regional(5/16)` + `IMA(0/1)` 被**加總**成 17 檢出 / 5 陽性；
+「closest margin 5 mm」未指明是 CRM 還是 distal，因此落在 `closest_margin_mm` 而非猜測。
 
 ## 萃取 Schema
 
@@ -45,6 +99,8 @@
 | `distal_margin_mm` | 遠端切緣距離（僅明確標 Distal 時） | 數值(mm) |
 | `closest_margin_mm` / `closest_margin_desc` | 未指明方向的最近切緣 | 數值(mm) / 字串 |
 | `extraction_notes` | 無法對應或特殊狀況的原文記錄 | 字串 |
+
+設計取捨見 [ADR-0003](docs/adr/0003-prompt-based-extraction-with-freeform-json.md)。
 
 ## Pipeline 架構
 
@@ -84,10 +140,8 @@ ollama pull qwen2.5:14b
 
 ## 環境變數設定
 
-複製範本後填入你的金鑰：
-
 ```bash
-cp .env.local.example .env.local
+cp .env.local.example .env.local   # 再填入你的金鑰
 ```
 
 `.env.local`（已被 git 忽略，**切勿 commit**）：
@@ -119,16 +173,26 @@ python LLM_validation.py
 
 ## 開發
 
-本專案使用 Ruff（lint + format）、Pyright（type check）、pre-commit 與 GitHub Actions CI。
+本專案使用 Ruff（lint + format）、Pyright（type check）、pytest、pre-commit 與 GitHub Actions CI。
 
 ```bash
-pip install ruff pyright pre-commit
+pip install ruff pyright pytest pre-commit
 pre-commit install          # 啟用 commit 前自動檢查（含 gitleaks 防金鑰外洩）
 
 ruff check .                # lint
 ruff format .               # format
 pyright                     # type check
+pytest                      # 測試（schema 一致性 + fallback 邏輯）
 ```
+
+CI（`.github/workflows/ci.yml`）含三個 job：`lint-and-typecheck`、`test`、`secret-scan`。
+
+## 限制與已知問題
+
+- **enum 未被機器強制**：採自由格式 JSON，模型若吐 schema 外的值會靜默通過，仰賴人工複核。
+- **無 gold standard 自動評分**：目前準確率靠人工比對，尚無自動化 per-field accuracy。
+- **文字級去識別化未做**：僅移除結構化病歷號，報告自由文字內若殘留姓名／日期未必清除。
+- **雲端 fallback 是隱性的**：地端故障時 PHI 會送往雲端，正式使用前應加上明確政策與紀錄。
 
 ## 專案結構
 
@@ -141,8 +205,11 @@ pyright                     # type check
 ├── schema.json                  schema 範例
 ├── for_study_deidentified/      去識別化報告 (JSON)
 ├── for_study_deidentified_txt/  去識別化報告 (純文字)
+├── tests/                       schema 一致性 + fallback 測試
+├── docs/adr/                    架構決策記錄 (ADR)
 ├── requirements.txt
-├── pyproject.toml               Ruff / Pyright 設定
+├── pyproject.toml               Ruff / Pyright / pytest 設定
 ├── .pre-commit-config.yaml
+├── .gitleaks.toml
 └── .github/workflows/ci.yml
 ```
