@@ -11,9 +11,10 @@ __pycache__/
 # Sensitive: re-identification key (maps Study_ID back to real chart numbers)
 id_mapping_key.csv
 
-# Sensitive: cohort files containing real chart numbers (PII) — kept local only
+# Sensitive: cohort files containing real chart numbers / DOB (PII) — kept local only
 study_cohort.csv
 input.csv
+LLM_Extraction_Study.xls
 
 # Gold standard annotations (kept local only)
 Gold_Standard.xlsx
