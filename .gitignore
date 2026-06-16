@@ -1,3 +1,15 @@
 .env.local
 __pycache__/
 *.pyc
+
+# macOS
+.DS_Store
+
+# Excel lock/temp files
+~$*
+
+# Sensitive: re-identification key (maps Study_ID back to real chart numbers)
+id_mapping_key.csv
+
+# Gold standard annotations (kept local only)
+Gold_Standard.xlsx
