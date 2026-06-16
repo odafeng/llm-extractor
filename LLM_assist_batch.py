@@ -69,6 +69,11 @@ Extract clinical data from the pathology report into a strict JSON format.
    - **Bd2_Int**: 5-9 buds.
    - **Bd3_High**: >= 10 buds.
    - If the report explicitly says "High Grade" for budding, map to `Bd3_High`.
+9. **EMVI (Extramural Venous Invasion)**: This is SEPARATE from LVI. Do NOT merge them.
+   - Map "Extramural venous invasion: Present" to "Positive" (including phrasings like "Present, confirmed by VVG/Desmin stain").
+   - Map "Not identified" or "Absent" to "Negative".
+   - If the line is an uncleaned template artifact (e.g. "Not identified/Present"), set EMVI to `null` and record the original text in `extraction_notes`.
+   - If there is no separate extramural venous field (only a combined "Lymphatic/venous invasion" line), leave EMVI `null`.
 
 ### JSON OUTPUT SCHEMA:
 {
@@ -81,7 +86,8 @@ Extract clinical data from the pathology report into a strict JSON format.
   "nodes_pos": 1,
   "metastasis": "M0",             // Pick one: "M0", "M1"
   "tumor_size_cm": 3.5,
-  "LVI": "Positive",              // Pick one: "Positive", "Negative"
+  "LVI": "Positive",              // Pick one: "Positive", "Negative". Lymphovascular invasion
+  "EMVI": "Negative",             // Pick one: "Positive", "Negative". Extramural venous invasion (SEPARATE from LVI)
   "PNI": "Negative",              // Pick one: "Positive", "Negative"
   "Deposits": "Negative",         // Pick one: "Positive", "Negative"
   "Budding": "Low",               // Pick one: "High", "Intermediate", "Low"
@@ -254,8 +260,8 @@ def main():
         cols_order = [
             "Source_Folder", "ChartNo", "Study_ID", 
             "tumor_found", "histology", "grade", "pT", "pN", 
-            "nodes_exam", "nodes_pos", "metastasis", "tumor_size_cm", 
-            "LVI", "PNI", "Deposits", "Budding", "TME", "MMR", 
+            "nodes_exam", "nodes_pos", "metastasis", "tumor_size_cm",
+            "LVI", "EMVI", "PNI", "Deposits", "Budding", "TME", "MMR",
             "CRM_status", "CRM_dist_mm", "distal_margin_mm", 
             "closest_margin_mm", "closest_margin_desc", "extraction_notes",
             "LLM_Source", "Error", "Raw_Output"
