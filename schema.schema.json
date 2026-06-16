@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/odafeng/llm-extractor/blob/main/schema.schema.json",
+  "title": "Rectal Cancer Pathology Extraction Record",
+  "description": "One extracted record per pathology report. Aligned with AJCC 8th edition (TNM staging), the CAP colorectal synoptic protocol (field definitions), and ITBCC 2016 (tumor budding grading). Any field not stated in the report is null. Fields marked 'rectal-specific' in their description are the local-recurrence / prognostic markers that matter most in rectal (vs. general colorectal) cancer.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "file_id": {
+      "type": "string",
+      "description": "De-identified study / file identifier (e.g. P001). Never a real chart number."
+    },
+    "tumor_found": {
+      "type": ["boolean", "null"],
+      "description": "Whether residual tumor is present. false for post-treatment / pT0 / pTX with no carcinoma; in that case histology, grade and tumor_size_cm are null."
+    },
+    "histology": {
+      "type": ["string", "null"],
+      "description": "Histologic type, e.g. 'Adenocarcinoma'."
+    },
+    "grade": {
+      "type": ["string", "null"],
+      "enum": ["Well", "Moderate", "Poor", null],
+      "description": "Differentiation grade."
+    },
+    "pT": {
+      "type": ["string", "null"],
+      "description": "Primary tumor category, AJCC 8th edition (e.g. 'T3')."
+    },
+    "pN": {
+      "type": ["string", "null"],
+      "description": "Regional lymph node category, AJCC 8th edition (e.g. 'N1a')."
+    },
+    "metastasis": {
+      "type": ["string", "null"],
+      "enum": ["M0", "M1", null],
+      "description": "Distant metastasis. Often not determinable from the pathology report alone."
+    },
+    "nodes_exam": {
+      "type": ["integer", "null"],
+      "description": "Total lymph nodes examined; summed across node groups (e.g. perirectal + IMA)."
+    },
+    "nodes_pos": {
+      "type": ["integer", "null"],
+      "description": "Number of positive lymph nodes; summed across node groups."
+    },
+    "tumor_size_cm": {
+      "type": ["number", "null"],
+      "description": "Largest tumor dimension, in cm."
+    },
+    "LVI": {
+      "type": ["string", "null"],
+      "enum": ["Positive", "Negative", null],
+      "description": "Lymphovascular invasion."
+    },
+    "EMVI": {
+      "type": ["string", "null"],
+      "enum": ["Positive", "Negative", null],
+      "description": "Extramural venous invasion. Rectal-specific independent prognostic factor; recorded SEPARATELY from LVI."
+    },
+    "PNI": {
+      "type": ["string", "null"],
+      "enum": ["Positive", "Negative", null],
+      "description": "Perineural invasion."
+    },
+    "Deposits": {
+      "type": ["string", "null"],
+      "enum": ["Positive", "Negative", null],
+      "description": "Tumor deposits (discontinuous extramural extension)."
+    },
+    "Budding": {
+      "type": ["string", "null"],
+      "enum": ["High", "Intermediate", "Low", null],
+      "description": "Tumor budding, ITBCC 2016 grading (Low=0-4, Intermediate=5-9, High>=10 buds)."
+    },
+    "TME": {
+      "type": ["string", "null"],
+      "enum": ["Complete", "Nearly complete", "Incomplete", null],
+      "description": "Completeness of the mesorectum (total mesorectal excision quality). Rectal-specific."
+    },
+    "MMR": {
+      "type": ["string", "null"],
+      "enum": ["pMMR", "dMMR", null],
+      "description": "Mismatch repair status (proficient / deficient)."
+    },
+    "CRM_status": {
+      "type": ["string", "null"],
+      "enum": ["Positive", "Negative", null],
+      "description": "Circumferential resection margin status. Rectal-specific; key local-recurrence factor."
+    },
+    "CRM_dist_mm": {
+      "type": ["number", "null"],
+      "description": "Distance to the circumferential resection margin, in mm. Populated only when the text explicitly says circumferential / radial / CRM."
+    },
+    "distal_margin_mm": {
+      "type": ["number", "null"],
+      "description": "Distal margin distance, in mm. Populated only when the text explicitly says 'Distal'."
+    },
+    "closest_margin_mm": {
+      "type": ["number", "null"],
+      "description": "Closest margin distance, in mm, when direction is unspecified. NOT assumed to be CRM or distal."
+    },
+    "closest_margin_desc": {
+      "type": ["string", "null"],
+      "description": "Verbatim description of the unspecified closest margin (e.g. 'distance from resection line')."
+    },
+    "extraction_notes": {
+      "type": ["string", "null"],
+      "description": "Original text for findings that do not map to an allowed value, or special status (e.g. 'No residual tumor')."
+    }
+  },
+  "required": ["file_id"]
+}
