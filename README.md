@@ -1,4 +1,4 @@
-# LLM Pathology Extractor
+# Rectal Cancer Pathology Report Extractor
 
 [![CI](https://github.com/odafeng/llm-extractor/actions/workflows/ci.yml/badge.svg)](https://github.com/odafeng/llm-extractor/actions/workflows/ci.yml)
 
@@ -77,31 +77,54 @@ margin 要分辨 CRM／distal／未指明、淋巴結要跨群組加總、addend
 注意：淋巴結 `regional(5/16)` + `IMA(0/1)` 被**加總**成 17 檢出 / 5 陽性；
 「closest margin 5 mm」未指明是 CRM 還是 distal，因此落在 `closest_margin_mm` 而非猜測。
 
-## 萃取 Schema
+## 萃取 Schema（直腸癌 synoptic）
 
-每份報告萃取成下列欄位（未提及一律回傳 `null`）：
+Schema 對齊國際病理報告標準：**AJCC 8th edition**（TNM 分期）、**CAP** colorectal synoptic
+protocol（欄位定義）、**ITBCC 2016**（tumor budding 分級）。欄位依臨床意義分組，
+未提及一律回傳 `null`。標 🔶 者為**直腸癌特異**（相對於一般大腸癌）的局部復發 / 預後關鍵指標。
+
+**腫瘤與分期**
 
 | 欄位 | 說明 | 允許值 |
 |------|------|--------|
-| `tumor_found` | 是否有殘餘腫瘤 | `true` / `false` |
+| `tumor_found` | 是否有殘餘腫瘤（治療後 / pT0 為 `false`） | `true` / `false` |
 | `histology` | 組織型態 | 字串，如 `Adenocarcinoma` |
 | `grade` | 分化程度 | `Well` / `Moderate` / `Poor` |
-| `pT` / `pN` / `metastasis` | TNM 分期 | 如 `T3` / `N1a` / `M0` |
-| `nodes_exam` / `nodes_pos` | 檢出 / 陽性淋巴結數 | 整數（分組會加總） |
+| `pT` / `pN` / `metastasis` | TNM 分期（AJCC 8th） | 如 `T3` / `N1a` / `M0` |
+| `nodes_exam` / `nodes_pos` | 檢出 / 陽性淋巴結數（跨群組**自動加總**） | 整數 |
 | `tumor_size_cm` | 腫瘤大小 | 數值（cm） |
+
+**侵犯與沉積（預後因子）**
+
+| 欄位 | 說明 | 允許值 |
+|------|------|--------|
 | `LVI` | Lymphovascular invasion | `Positive` / `Negative` |
-| `EMVI` | Extramural venous invasion（與 LVI 分開） | `Positive` / `Negative` |
+| `EMVI` 🔶 | Extramural venous invasion —— 直腸癌獨立預後因子，**與 LVI 分開判讀** | `Positive` / `Negative` |
 | `PNI` | Perineural invasion | `Positive` / `Negative` |
 | `Deposits` | Tumor deposits | `Positive` / `Negative` |
-| `Budding` | Tumor budding（ITBCC 2016） | `High` / `Intermediate` / `Low` |
-| `TME` | Mesorectum 完整度 | `Complete` / `Nearly complete` / `Incomplete` |
+| `Budding` | Tumor budding（ITBCC 2016 標準） | `High` / `Intermediate` / `Low` |
+
+**切緣 Margin（直腸癌局部復發關鍵）**
+
+| 欄位 | 說明 | 允許值 |
+|------|------|--------|
+| `CRM_status` / `CRM_dist_mm` 🔶 | Circumferential resection margin 狀態 / 距離 | `Positive`/`Negative` / 數值(mm) |
+| `distal_margin_mm` | 遠端切緣距離（僅文字明確標 *Distal* 時） | 數值(mm) |
+| `closest_margin_mm` / `closest_margin_desc` | 未指明方向的最近切緣（**不臆測**為 CRM/distal） | 數值(mm) / 字串 |
+
+**結構完整度 / 分子 / 註記**
+
+| 欄位 | 說明 | 允許值 |
+|------|------|--------|
+| `TME` 🔶 | 全直腸繫膜切除（mesorectum）完整度 —— 直腸特異 | `Complete` / `Nearly complete` / `Incomplete` |
 | `MMR` | Mismatch repair status | `pMMR` / `dMMR` |
-| `CRM_status` / `CRM_dist_mm` | 環狀切緣狀態 / 距離 | `Positive`/`Negative` / 數值(mm) |
-| `distal_margin_mm` | 遠端切緣距離（僅明確標 Distal 時） | 數值(mm) |
-| `closest_margin_mm` / `closest_margin_desc` | 未指明方向的最近切緣 | 數值(mm) / 字串 |
 | `extraction_notes` | 無法對應或特殊狀況的原文記錄 | 字串 |
 
-設計取捨見 [ADR-0003](docs/adr/0003-prompt-based-extraction-with-freeform-json.md)。
+> **為什麼是這些欄位**：它們是直腸癌 synoptic report 的核心分期與預後變數。其中
+> **CRM、TME、EMVI**（🔶）是直腸癌相對於一般大腸癌特別重要的局部復發 / 預後指標 ——
+> 也正是傳統結構化資料庫最常缺漏、卻最有研究價值的欄位。
+
+機器可讀範例見 [`schema.json`](schema.json)；設計取捨見 [ADR-0003](docs/adr/0003-prompt-based-extraction-with-freeform-json.md)。
 
 ## Pipeline 架構
 
