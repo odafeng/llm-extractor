@@ -1,6 +1,6 @@
 # LLM Pathology Extractor
 
-[![CI](https://github.com/odafeng/LLM_Extractor/actions/workflows/ci.yml/badge.svg)](https://github.com/odafeng/LLM_Extractor/actions/workflows/ci.yml)
+[![CI](https://github.com/odafeng/llm-extractor/actions/workflows/ci.yml/badge.svg)](https://github.com/odafeng/llm-extractor/actions/workflows/ci.yml)
 
 > 用 LLM 把**非結構化的直腸癌病理報告**萃取成**結構化資料表**的 pipeline。
 > 內建臨床導向的萃取規則，並採「**地端 (Ollama) 優先、雲端 (GPT / Claude / Gemini) fallback**」
