@@ -1,0 +1,23 @@
+[project]
+name = "llm-pathology-extractor"
+version = "0.1.0"
+description = "LLM pipeline that extracts structured data from rectal cancer pathology reports"
+requires-python = ">=3.11"
+readme = "README.md"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: isort, UP: pyupgrade, B: bugbear
+select = ["E", "W", "F", "I", "UP", "B"]
+# E501: 長行交給 formatter；SYSTEM_PROMPT 內含的長指令行不需強制斷行
+ignore = ["E501"]
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+# 第三方 SDK（openai 等）的型別 stub 與動態 client 介面常產生雜訊，降級為警告以免 CI 失敗
+reportArgumentType = "warning"
+reportMissingTypeStubs = false
