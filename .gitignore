@@ -19,6 +19,13 @@ LLM_Extraction_Study.xls
 # Gold standard annotations (kept local only)
 Gold_Standard.xlsx
 
+# Patient-level data: no IRB — never publish. Kept local only.
+for_study_deidentified/
+for_study_deidentified_txt/
+
 # Extraction outputs
 Pathological_Report_Extraction_Result.xlsx
 Multi_Model_Extraction_Result*.xlsx
+
+# Internal presentation (kept local; do not publish to public repo)
+presentation/

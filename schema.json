@@ -1,19 +1,25 @@
 {
     "file_id": "P001",
+    "tumor_found": true,
     "histology": "Adenocarcinoma",
     "grade": "Moderate",
     "pT": "T3",
     "pN": "N1a",
     "nodes_exam": 31,
     "nodes_pos": 1,
+    "metastasis": "M0",
     "tumor_size_cm": 3.2,
     "LVI": "Negative",
+    "EMVI": "Negative",
     "PNI": "Negative",
     "Deposits": "Negative",
     "Budding": "High",
+    "TME": "Complete",
+    "MMR": "pMMR",
     "CRM_status": "Negative",
     "CRM_dist_mm": null,
-    "Distal_dist_mm": 36,
-    "TME": "Complete",
-    "MMR": "pMMR"
+    "distal_margin_mm": 36,
+    "closest_margin_mm": null,
+    "closest_margin_desc": null,
+    "extraction_notes": null
 }
