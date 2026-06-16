@@ -1,0 +1,10 @@
+# Gitleaks 設定：沿用預設規則，並排除「本機專用、已 gitignore、永不進版控」的密鑰檔。
+# 這些檔不在 git 追蹤內，CI checkout 也不會有；此 allowlist 僅避免 `gitleaks dir` 在本機掃到誤報。
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Local-only secret files (gitignored, never committed)"
+paths = [
+  '''\.env\.local$''',
+]

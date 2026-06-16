@@ -18,6 +18,7 @@ ignore = ["E501"]
 [tool.pyright]
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
-# 第三方 SDK（openai 等）的型別 stub 與動態 client 介面常產生雜訊，降級為警告以免 CI 失敗
+# 第三方 SDK（openai / google-generativeai 等）的型別 stub 與動態 client 介面常產生雜訊，降級為警告以免 CI 失敗
 reportArgumentType = "warning"
+reportPrivateImportUsage = "warning"
 reportMissingTypeStubs = false
