@@ -20,6 +20,8 @@ import pandas as pd
 from dotenv import load_dotenv
 from tqdm import tqdm
 
+from verify import verify
+
 # ================= 0. 環境變數載入 =================
 load_dotenv(".env.local")
 
@@ -220,9 +222,17 @@ def main():
             try:
                 llm_json = json.loads(llm_res)
                 row_data.update(llm_json)
+                # verify stage: per-field confidence + review queue (no extra LLM call)
+                v = verify(llm_json, report_text)
+                row_data["overall_confidence"] = v["overall_confidence"]
+                row_data["needs_review"] = v["needs_review"]
+                row_data["review_fields"] = ", ".join(v["review_fields"])
+                row_data["flags"] = " | ".join(v["flags"])
             except Exception:
                 row_data["Error"] = "ParseFail"
                 row_data["Raw_Output"] = llm_res
+                row_data["needs_review"] = True
+                row_data["flags"] = "extraction produced no valid JSON"
 
             row_data["LLM_Source"] = source
             results_gpt.append(row_data)
@@ -258,6 +268,10 @@ def main():
             "closest_margin_mm",
             "closest_margin_desc",
             "extraction_notes",
+            "overall_confidence",
+            "needs_review",
+            "review_fields",
+            "flags",
             "LLM_Source",
             "Error",
             "Raw_Output",
@@ -268,6 +282,17 @@ def main():
         existing_cols = [c for c in cols_order if c in df_gpt.columns]
         remaining_cols = [c for c in df_gpt.columns if c not in cols_order]
         df_gpt = df_gpt[existing_cols + remaining_cols]
+
+        # surface the review queue first: rows needing review, lowest confidence on top
+        if "needs_review" in df_gpt.columns:
+            df_gpt = df_gpt.sort_values(  # type: ignore[call-overload]
+                by=["needs_review", "overall_confidence"],
+                ascending=[False, True],
+                na_position="last",
+            ).reset_index(drop=True)
+
+        n_review = int(df_gpt["needs_review"].sum()) if "needs_review" in df_gpt.columns else 0
+        print(f"需人工複核: {n_review}/{len(df_gpt)} 份 (已排到最前面)")
 
         output_path = os.path.join(base_dir, OUTPUT_FILE)
         with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
