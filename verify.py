@@ -46,10 +46,19 @@ CODE_FIELDS = {"pT", "pN", "metastasis"}
 # legitimately large margin (e.g. a 15 cm proximal margin) still passes because the
 # number really does sit next to the keyword. Magnitude is NOT used — a big margin is
 # clinically possible.
+# Each field maps to (keywords, disqualifiers). closest_margin is the AMBIGUOUS-only
+# bucket: the prompt reserves it for a margin given without proximal/distal/radial. So
+# its keyword context must be unqualified — a number next to "distal resection line"
+# must NOT ground here (it belongs in distal_margin), else a mis-bucketed value escapes
+# review. The disqualifiers mirror the prompt's "WITHOUT specifying proximal/distal/
+# radial" rule. The other two buckets ARE the qualifier, so they need no exclusion.
 NUMERIC_CONTEXT = {
-    "CRM_dist_mm": ["circumferential", "radial", "crm"],
-    "distal_margin_mm": ["distal"],
-    "closest_margin_mm": ["closest", "nearest margin", "resection line", "surgical margin"],
+    "CRM_dist_mm": (["circumferential", "radial", "crm"], []),
+    "distal_margin_mm": (["distal"], []),
+    "closest_margin_mm": (
+        ["closest", "nearest margin", "resection line", "surgical margin"],
+        ["proximal", "distal", "radial", "circumferential", "crm"],
+    ),
 }
 
 # concept keywords: if the model asserts a POSITIVE finding the report never
@@ -101,8 +110,9 @@ def _number_forms(value):
     return {f"{c:g}" for c in (x, x * 10, x / 10)}
 
 
-def _has_number_near(value, text: str, keywords, window: int = 80) -> bool:
-    """True if a form of `value` appears within `window` chars of any keyword."""
+def _has_number_near(value, text: str, keywords, exclude=(), window: int = 80) -> bool:
+    """True if a form of `value` appears within `window` chars of a keyword whose local
+    context contains none of the `exclude` disqualifiers."""
     forms = _number_forms(value)
     if not forms:
         return False
@@ -111,7 +121,10 @@ def _has_number_near(value, text: str, keywords, window: int = 80) -> bool:
         start = 0
         while (i := tl.find(kw, start)) >= 0:
             seg = text[max(0, i - window) : i + len(kw) + window]
-            if any(re.search(rf"(?<!\d){re.escape(s)}(?!\d)", seg) for s in forms):
+            segl = seg.lower()
+            if not any(x in segl for x in exclude) and any(
+                re.search(rf"(?<!\d){re.escape(s)}(?!\d)", seg) for s in forms
+            ):
                 return True
             start = i + 1
     return False
@@ -133,7 +146,8 @@ def grounding(record: dict, text: str) -> dict:
         if f.startswith("_") or is_null(v):
             continue
         if f in NUMERIC_CONTEXT:
-            out[f] = _has_number_near(v, t, NUMERIC_CONTEXT[f])
+            kws, excl = NUMERIC_CONTEXT[f]
+            out[f] = _has_number_near(v, t, kws, excl)
         elif f in NUMERIC_FIELDS:
             out[f] = _text_has_number(v, t)
         elif f in CODE_FIELDS and f != "metastasis":
