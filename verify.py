@@ -40,6 +40,18 @@ NUMERIC_FIELDS = {
 }
 CODE_FIELDS = {"pT", "pN", "metastasis"}
 
+# Margin distances must be grounded CONTEXTUALLY: the number has to appear near its
+# own margin keyword, not just anywhere in the (long) report. This catches values
+# put in the wrong margin bucket or mis-converted (e.g. 1.5 cm read as 150), while a
+# legitimately large margin (e.g. a 15 cm proximal margin) still passes because the
+# number really does sit next to the keyword. Magnitude is NOT used — a big margin is
+# clinically possible.
+NUMERIC_CONTEXT = {
+    "CRM_dist_mm": ["circumferential", "radial", "crm"],
+    "distal_margin_mm": ["distal"],
+    "closest_margin_mm": ["closest", "nearest margin", "resection line", "surgical margin"],
+}
+
 # concept keywords: if the model asserts a POSITIVE finding the report never
 # mentions, that is a hallucination risk worth flagging.
 CONCEPT_KEYWORDS = {
@@ -80,6 +92,31 @@ def _text_has_number(value, text: str) -> bool:
     return False
 
 
+def _number_forms(value):
+    """The value and its cm<->mm twins, as bare-number strings."""
+    try:
+        x = float(value)
+    except (TypeError, ValueError):
+        return None
+    return {f"{c:g}" for c in (x, x * 10, x / 10)}
+
+
+def _has_number_near(value, text: str, keywords, window: int = 80) -> bool:
+    """True if a form of `value` appears within `window` chars of any keyword."""
+    forms = _number_forms(value)
+    if not forms:
+        return False
+    tl = text.lower()
+    for kw in keywords:
+        start = 0
+        while (i := tl.find(kw, start)) >= 0:
+            seg = text[max(0, i - window) : i + len(kw) + window]
+            if any(re.search(rf"(?<!\d){re.escape(s)}(?!\d)", seg) for s in forms):
+                return True
+            start = i + 1
+    return False
+
+
 def _text_has_code(value, text: str) -> bool:
     """pT/pN/M code grounded if the core code (any p/yp prefix) appears."""
     core = re.sub(r"^(yp|p|c)", "", str(value).strip().lower())
@@ -95,7 +132,9 @@ def grounding(record: dict, text: str) -> dict:
     for f, v in record.items():
         if f.startswith("_") or is_null(v):
             continue
-        if f in NUMERIC_FIELDS:
+        if f in NUMERIC_CONTEXT:
+            out[f] = _has_number_near(v, t, NUMERIC_CONTEXT[f])
+        elif f in NUMERIC_FIELDS:
             out[f] = _text_has_number(v, t)
         elif f in CODE_FIELDS and f != "metastasis":
             out[f] = _text_has_code(v, t)
