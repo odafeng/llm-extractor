@@ -30,6 +30,31 @@ def test_mm_cm_twin_is_grounded():
     assert V.grounding(rec, text)["tumor_size_cm"] is True
 
 
+def test_margin_grounded_when_near_keyword():
+    rec = {"distal_margin_mm": 15}
+    text = "Tumor is 1.5 cm from the distal resection line. Other notes 15 lymph nodes."
+    assert V.grounding(rec, text)["distal_margin_mm"] is True  # 1.5 cm == 15 mm, near 'distal'
+
+
+def test_margin_not_grounded_when_only_elsewhere():
+    # P008-style: model put 150 in closest_margin; report says 1.5 cm by 'distal',
+    # and a stray '15' exists far away — must NOT ground 150 to a margin keyword.
+    rec = {"closest_margin_mm": 150}
+    text = (
+        "Distal resection margin: 1.5 cm, uninvolved. "
+        + "x" * 200
+        + " 15 mitoses per HPF noted elsewhere."
+    )
+    assert V.grounding(rec, text)["closest_margin_mm"] is False
+
+
+def test_large_margin_passes_when_grounded():
+    # a 15 cm proximal/distal margin is clinically possible — magnitude must NOT flag it
+    rec = {"distal_margin_mm": 150}
+    text = "Distal margin is 15 cm from tumor in this long segment."
+    assert V.grounding(rec, text)["distal_margin_mm"] is True
+
+
 def test_off_schema_value_flagged():
     rec = {"grade": "Grade 2"}  # not in {Well, Moderate, Poor}
     text = "grade 2"
