@@ -88,21 +88,23 @@
       "enum": ["Positive", "Negative", null],
       "description": "Circumferential resection margin status. Rectal-specific; key local-recurrence factor."
     },
-    "CRM_dist_mm": {
-      "type": ["number", "null"],
-      "description": "Distance to the circumferential resection margin, in mm. Populated only when the text explicitly says circumferential / radial / CRM."
-    },
-    "distal_margin_mm": {
-      "type": ["number", "null"],
-      "description": "Distal margin distance, in mm. Populated only when the text explicitly says 'Distal'."
-    },
-    "closest_margin_mm": {
-      "type": ["number", "null"],
-      "description": "Closest margin distance, in mm, when direction is unspecified. NOT assumed to be CRM or distal."
-    },
-    "closest_margin_desc": {
-      "type": ["string", "null"],
-      "description": "Verbatim description of the unspecified closest margin (e.g. 'distance from resection line')."
+    "margins": {
+      "type": "array",
+      "description": "One object per margin DISTANCE the report states. Captures what the report says verbatim; never guesses a direction it does not state. Derive CRM/distal distances downstream by type.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["circumferential", "distal", "proximal", "closest_unspecified"],
+            "description": "What the report actually calls this margin. 'closest_unspecified' when no direction is given — NOT relabelled as CRM/distal."
+          },
+          "distance_mm": {"type": ["number", "null"], "description": "Distance, converted to mm."},
+          "involved": {"type": ["boolean", "null"], "description": "True if tumor reaches/involves this margin."},
+          "verbatim": {"type": "string", "description": "Exact source phrase the entry was taken from (for grounding + human review)."}
+        },
+        "required": ["type", "verbatim"]
+      }
     },
     "extraction_notes": {
       "type": ["string", "null"],

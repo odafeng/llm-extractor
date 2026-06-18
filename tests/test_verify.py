@@ -30,43 +30,72 @@ def test_mm_cm_twin_is_grounded():
     assert V.grounding(rec, text)["tumor_size_cm"] is True
 
 
-def test_margin_grounded_when_near_keyword():
-    rec = {"distal_margin_mm": 15}
-    text = "Tumor is 1.5 cm from the distal resection line. Other notes 15 lymph nodes."
-    assert V.grounding(rec, text)["distal_margin_mm"] is True  # 1.5 cm == 15 mm, near 'distal'
+def test_margin_ok_when_verbatim_and_distance_present():
+    rec = {
+        "margins": [
+            {
+                "type": "distal",
+                "distance_mm": 15,
+                "involved": False,
+                "verbatim": "1.5 cm from distal resection line",
+            }
+        ]
+    }
+    text = "Tumor is 1.5 cm from distal resection line, uninvolved."
+    r = V.verify(rec, text)
+    assert not r["margin_flags"]
+    assert "margins[0]" not in r["review_fields"]
 
 
-def test_margin_not_grounded_when_only_elsewhere():
-    # P008-style: model put 150 in closest_margin; report says 1.5 cm by 'distal',
-    # and a stray '15' exists far away — must NOT ground 150 to a margin keyword.
-    rec = {"closest_margin_mm": 150}
-    text = (
-        "Distal resection margin: 1.5 cm, uninvolved. "
-        + "x" * 200
-        + " 15 mitoses per HPF noted elsewhere."
-    )
-    assert V.grounding(rec, text)["closest_margin_mm"] is False
+def test_margin_flagged_when_verbatim_not_in_report():
+    # hallucinated verbatim -> flagged
+    rec = {
+        "margins": [
+            {
+                "type": "circumferential",
+                "distance_mm": 2,
+                "involved": False,
+                "verbatim": "CRM 2 mm clear",
+            }
+        ]
+    }
+    text = "Adenocarcinoma pT3. No margin distance stated."
+    r = V.verify(rec, text)
+    assert any("verbatim not found" in m for m in r["margin_flags"])
+    assert "margins[0]" in r["review_fields"]
 
 
-def test_closest_margin_not_grounded_when_qualified():
-    # 'distal resection line' specifies distal -> value belongs in distal_margin, not the
-    # ambiguous closest_margin bucket; must NOT ground as closest (so it stays in review).
-    rec = {"closest_margin_mm": 15}
-    text = "Tumor is 1.5 cm from the distal resection line."
-    assert V.grounding(rec, text)["closest_margin_mm"] is False
+def test_margin_flagged_when_distance_not_in_its_verbatim():
+    # unit/transcription error: distance_mm=150 but the verbatim says 1.5 cm
+    rec = {
+        "margins": [
+            {
+                "type": "distal",
+                "distance_mm": 150,
+                "involved": False,
+                "verbatim": "1.5 cm from distal resection line",
+            }
+        ]
+    }
+    text = "Tumor 1.5 cm from distal resection line."
+    r = V.verify(rec, text)
+    assert any("does not appear in its own verbatim" in m for m in r["margin_flags"])
 
 
-def test_closest_margin_grounded_when_ambiguous():
-    rec = {"closest_margin_mm": 15}
-    text = "Closest margin: 1.5 cm (orientation not specified)."
-    assert V.grounding(rec, text)["closest_margin_mm"] is True
+def test_margin_unknown_type_flagged():
+    rec = {"margins": [{"type": "lateral", "distance_mm": 5, "verbatim": "lateral margin 5 mm"}]}
+    r = V.verify(rec, "lateral margin 5 mm")
+    assert any("unknown margin type" in m for m in r["margin_flags"])
 
 
-def test_large_margin_passes_when_grounded():
-    # a 15 cm proximal/distal margin is clinically possible — magnitude must NOT flag it
-    rec = {"distal_margin_mm": 150}
-    text = "Distal margin is 15 cm from tumor in this long segment."
-    assert V.grounding(rec, text)["distal_margin_mm"] is True
+def test_flatten_margins_derives_columns():
+    margins = [
+        {"type": "circumferential", "distance_mm": 2, "verbatim": "CRM 2 mm"},
+        {"type": "distal", "distance_mm": 30, "verbatim": "distal 3 cm"},
+    ]
+    out = V.flatten_margins(margins)
+    assert out["crm_distance_mm"] == 2 and out["distal_distance_mm"] == 30
+    assert "CRM 2 mm" in out["margins_verbatim"] and "distal 3 cm" in out["margins_verbatim"]
 
 
 def test_off_schema_value_flagged():

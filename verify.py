@@ -30,36 +30,14 @@ ALLOWED = {
     "CRM_status": {"positive", "negative"},
 }
 
-NUMERIC_FIELDS = {
-    "nodes_exam",
-    "nodes_pos",
-    "tumor_size_cm",
-    "CRM_dist_mm",
-    "distal_margin_mm",
-    "closest_margin_mm",
-}
+NUMERIC_FIELDS = {"nodes_exam", "nodes_pos", "tumor_size_cm"}
 CODE_FIELDS = {"pT", "pN", "metastasis"}
 
-# Margin distances must be grounded CONTEXTUALLY: the number has to appear near its
-# own margin keyword, not just anywhere in the (long) report. This catches values
-# put in the wrong margin bucket or mis-converted (e.g. 1.5 cm read as 150), while a
-# legitimately large margin (e.g. a 15 cm proximal margin) still passes because the
-# number really does sit next to the keyword. Magnitude is NOT used — a big margin is
-# clinically possible.
-# Each field maps to (keywords, disqualifiers). closest_margin is the AMBIGUOUS-only
-# bucket: the prompt reserves it for a margin given without proximal/distal/radial. So
-# its keyword context must be unqualified — a number next to "distal resection line"
-# must NOT ground here (it belongs in distal_margin), else a mis-bucketed value escapes
-# review. The disqualifiers mirror the prompt's "WITHOUT specifying proximal/distal/
-# radial" rule. The other two buckets ARE the qualifier, so they need no exclusion.
-NUMERIC_CONTEXT = {
-    "CRM_dist_mm": (["circumferential", "radial", "crm"], []),
-    "distal_margin_mm": (["distal"], []),
-    "closest_margin_mm": (
-        ["closest", "nearest margin", "resection line", "surgical margin"],
-        ["proximal", "distal", "radial", "circumferential", "crm"],
-    ),
-}
+# margins are now a verbatim-anchored list (see SYSTEM_PROMPT): each entry is
+# {type, distance_mm, involved, verbatim}. Grounding a margin = the verbatim phrase
+# appears in the report AND the distance appears in that verbatim. This is deterministic
+# and avoids the old 3-bucket disambiguation that caused convention clashes.
+MARGIN_TYPES = {"circumferential", "distal", "proximal", "closest_unspecified"}
 
 # concept keywords: if the model asserts a POSITIVE finding the report never
 # mentions, that is a hallucination risk worth flagging.
@@ -123,26 +101,6 @@ def _number_forms(value):
     return {f"{c:g}" for c in (x, x * 10, x / 10)}
 
 
-def _has_number_near(value, text: str, keywords, exclude=(), window: int = 80) -> bool:
-    """True if a form of `value` appears within `window` chars of a keyword whose local
-    context contains none of the `exclude` disqualifiers."""
-    forms = _number_forms(value)
-    if not forms:
-        return False
-    tl = text.lower()
-    for kw in keywords:
-        start = 0
-        while (i := tl.find(kw, start)) >= 0:
-            seg = text[max(0, i - window) : i + len(kw) + window]
-            segl = seg.lower()
-            if not any(x in segl for x in exclude) and any(
-                re.search(rf"(?<!\d){re.escape(s)}(?!\d)", seg) for s in forms
-            ):
-                return True
-            start = i + 1
-    return False
-
-
 def _text_has_code(value, text: str) -> bool:
     """pT/pN/M code grounded if the core code (any p/yp prefix) appears."""
     core = re.sub(r"^(yp|p|c)", "", str(value).strip().lower())
@@ -158,10 +116,7 @@ def grounding(record: dict, text: str) -> dict:
     for f, v in record.items():
         if f.startswith("_") or is_null(v):
             continue
-        if f in NUMERIC_CONTEXT:
-            kws, excl = NUMERIC_CONTEXT[f]
-            out[f] = _has_number_near(v, t, kws, excl)
-        elif f in NUMERIC_FIELDS:
+        if f in NUMERIC_FIELDS:
             out[f] = _text_has_number(v, t)
         elif f in CODE_FIELDS and f != "metastasis":
             out[f] = _text_has_code(v, t)
@@ -218,16 +173,55 @@ def rule_flags(record: dict) -> list[tuple[str, str]]:
         for f in ("histology", "grade", "tumor_size_cm"):
             if not is_null(g(f)):
                 flags.append((f, f"tumor_found is false / pT0 but {f}={g(f)!r} is set"))
-    # CRM status vs distance
-    crm = str(g("CRM_status")).strip().lower() if not is_null(g("CRM_status")) else None
-    cd = g("CRM_dist_mm")
-    if crm == "positive" and not is_null(cd):
-        try:
-            if float(cd) > 1:
-                flags.append(("CRM_dist_mm", f"CRM_status positive but CRM_dist_mm={cd} (>1mm)"))
-        except ValueError:
-            pass
     return flags
+
+
+def validate_margins(margins, text: str) -> list[tuple[str, str]]:
+    """Each margin {type, distance_mm, involved, verbatim} is sound iff its verbatim
+    phrase appears in the report AND its distance appears in that verbatim. Deterministic,
+    no bucketing guesswork. Returns (key, message) flags for review."""
+    flags = []
+    if not isinstance(margins, list):
+        if not is_null(margins):
+            flags.append(("margins", f"margins is not a list ({type(margins).__name__})"))
+        return flags
+    # whitespace-insensitive match: the model may join text that spans line breaks
+    tnorm = re.sub(r"\s+", " ", (text or "").lower())
+    for i, m in enumerate(margins):
+        key = f"margins[{i}]"
+        if not isinstance(m, dict):
+            flags.append((key, "margin entry is not an object"))
+            continue
+        mtype, vb, dist = m.get("type"), m.get("verbatim"), m.get("distance_mm")
+        if mtype not in MARGIN_TYPES:
+            flags.append((key, f"unknown margin type {mtype!r} (allowed: {sorted(MARGIN_TYPES)})"))
+        if is_null(vb) or re.sub(r"\s+", " ", str(vb).strip().lower()) not in tnorm:
+            flags.append((key, "verbatim not found in report (possible hallucination)"))
+        elif not is_null(dist):
+            forms = _number_forms(dist) or set()
+            if not any(re.search(rf"(?<!\d){re.escape(s)}(?!\d)", str(vb)) for s in forms):
+                flags.append((key, f"distance_mm={dist} does not appear in its own verbatim"))
+    return flags
+
+
+def flatten_margins(margins) -> dict:
+    """Derive tabular convenience columns from a margins list (for Excel/CSV output)."""
+    rows = margins if isinstance(margins, list) else []
+
+    def dist(prefix):
+        for m in rows:
+            if isinstance(m, dict) and str(m.get("type", "")).startswith(prefix):
+                return m.get("distance_mm")
+        return None
+
+    verbs = " | ".join(
+        str(m.get("verbatim", "")) for m in rows if isinstance(m, dict) and m.get("verbatim")
+    )
+    return {
+        "crm_distance_mm": dist("circumferential"),
+        "distal_distance_mm": dist("distal"),
+        "margins_verbatim": verbs,
+    }
 
 
 def verify(record: dict, text: str, review_threshold: float = 0.7) -> dict:
@@ -242,8 +236,8 @@ def verify(record: dict, text: str, review_threshold: float = 0.7) -> dict:
     tlow = (text or "").lower()
     fields: dict[str, dict] = {}
     for f, v in record.items():
-        if f.startswith("_") or is_null(v):
-            continue
+        if f.startswith("_") or f == "margins" or is_null(v):
+            continue  # margins is a list, validated separately
         conf, flags = 1.0, list(by_field.get(f, []))
         if ground.get(f) is False:
             conf -= 0.5
@@ -271,9 +265,11 @@ def verify(record: dict, text: str, review_threshold: float = 0.7) -> dict:
         if is_null(record.get(f)) and any(k in tlow for k in kws)
     ]
 
+    mflags = validate_margins(record.get("margins"), text)
+
     scored = [d["confidence"] for d in fields.values()]
     overall = round(sum(scored) / len(scored), 2) if scored else 1.0
-    global_flags = [f"{fld}: {m}" for fld, m in sflags + rflags]
+    global_flags = [f"{fld}: {m}" for fld, m in sflags + rflags + mflags]
     global_flags += [
         f"{f}: left blank but report discusses the concept (possible omission)" for f in omissions
     ]
@@ -285,6 +281,7 @@ def verify(record: dict, text: str, review_threshold: float = 0.7) -> dict:
     review_fields = sorted(
         {f for f, d in fields.items() if d["confidence"] < review_threshold or d["flags"]}
         | set(omissions)
+        | {k for k, _ in mflags}
     )
     return {
         "fields": fields,
@@ -292,5 +289,6 @@ def verify(record: dict, text: str, review_threshold: float = 0.7) -> dict:
         "flags": global_flags,
         "needs_review": needs_review,
         "omissions": omissions,
+        "margin_flags": [m for _, m in mflags],
         "review_fields": review_fields,
     }
