@@ -48,6 +48,20 @@ def test_margin_not_grounded_when_only_elsewhere():
     assert V.grounding(rec, text)["closest_margin_mm"] is False
 
 
+def test_closest_margin_not_grounded_when_qualified():
+    # 'distal resection line' specifies distal -> value belongs in distal_margin, not the
+    # ambiguous closest_margin bucket; must NOT ground as closest (so it stays in review).
+    rec = {"closest_margin_mm": 15}
+    text = "Tumor is 1.5 cm from the distal resection line."
+    assert V.grounding(rec, text)["closest_margin_mm"] is False
+
+
+def test_closest_margin_grounded_when_ambiguous():
+    rec = {"closest_margin_mm": 15}
+    text = "Closest margin: 1.5 cm (orientation not specified)."
+    assert V.grounding(rec, text)["closest_margin_mm"] is True
+
+
 def test_large_margin_passes_when_grounded():
     # a 15 cm proximal/distal margin is clinically possible — magnitude must NOT flag it
     rec = {"distal_margin_mm": 150}
