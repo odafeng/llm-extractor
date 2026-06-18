@@ -56,10 +56,18 @@ Extract clinical data from the pathology report into a strict JSON format.
    - Information in 'Synoptic Report' / 'Diagnosis' supersedes 'Gross Description'.
    - 'Addendum' or 'Amended' reports supersede original text.
 5. **Lymph Nodes**: If nodes are listed in groups (e.g., perirectal + IMA), **SUM** them for total examined/positive.
-6. **Margins (CRITICAL)**:
-   - **Distal Margin**: Only extract to `distal_margin_mm` if the text EXPLICITLY says "Distal".
-   - **CRM**: Only extract to `CRM_dist_mm` if the text EXPLICITLY says "Circumferential", "Radial", or "CRM".
-   - **Ambiguous Margin**: If the text only says "Closest margin", "Distance from resection line", or "Surgical margin" WITHOUT specifying proximal/distal/radial, extract the value to `closest_margin_mm`. **DO NOT GUESS** that it is Distal or CRM.
+6. **Margins (CRITICAL — capture each, NEVER guess the direction).** Output a `margins`
+   array with one object per margin distance the report states. For each object:
+   - `type`: copy what the report ACTUALLY says — "circumferential" (for circumferential /
+     radial / CRM), "distal", "proximal", or "closest_unspecified" when the report says only
+     "closest margin" / "distance from resection line" / "surgical margin" WITHOUT a direction.
+     **NEVER infer a direction the report does not state** (do not relabel an unspecified
+     "closest margin" as distal or circumferential).
+   - `distance_mm`: the distance, converted to mm.
+   - `involved`: true if the tumor reaches/involves that margin, else false.
+   - `verbatim`: the EXACT source phrase you took it from (copy it verbatim).
+   If the report gives no margin distance, output an empty array `[]`. `CRM_status` (the
+   circumferential margin involved/clear decision) is set independently of this list.
 7. **Tumor Presence**:
    - Set `tumor_found` to `false` ONLY if the report explicitly states "No residual tumor", "No residual carcinoma", or indicates a post-treatment/post-polypectomy status with no cancer cells found (pT0/pTX).
    - In these cases, set `histology`, `grade`, and `tumor_size_cm` to `null`. Do NOT extract histology from the 'History' section.
@@ -93,12 +101,10 @@ Extract clinical data from the pathology report into a strict JSON format.
   "TME": "Complete",              // Pick one: "Complete", "Incomplete", "Nearly complete"
   "MMR": "pMMR",                  // Pick one: "pMMR", "dMMR"
 
-  "CRM_status": "Negative",       // Pick one: "Positive", "Negative"
-  "CRM_dist_mm": 2.0,             // Only if explicitly CRM/Radial
-  "distal_margin_mm": 36,         // Only if explicitly Distal
-
-  "closest_margin_mm": 14,        // For ambiguous 'closest margin' / 'resection line'
-  "closest_margin_desc": "distance from resection line",
+  "CRM_status": "Negative",       // Pick one: "Positive", "Negative" — circumferential margin involved?
+  "margins": [                    // one object per margin distance stated; [] if none. NEVER guess direction.
+    {"type": "circumferential", "distance_mm": 2.0, "involved": false, "verbatim": "CRM 2 mm, uninvolved"}
+  ],                              // type: circumferential | distal | proximal | closest_unspecified
 
   "extraction_notes": "String. Record unmapped findings (e.g., 'High Grade') or special status (e.g., 'No residual tumor')."
 }
@@ -286,10 +292,10 @@ def main():
             "TME",
             "MMR",
             "CRM_status",
-            "CRM_dist_mm",
-            "distal_margin_mm",
-            "closest_margin_mm",
-            "closest_margin_desc",
+            "margins",
+            "crm_distance_mm",
+            "distal_distance_mm",
+            "margins_verbatim",
             "extraction_notes",
             "LLM_Source",
             "Error",

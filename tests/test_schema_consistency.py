@@ -27,10 +27,7 @@ SCHEMA_FIELDS = [
     "TME",
     "MMR",
     "CRM_status",
-    "CRM_dist_mm",
-    "distal_margin_mm",
-    "closest_margin_mm",
-    "closest_margin_desc",
+    "margins",
     "extraction_notes",
 ]
 

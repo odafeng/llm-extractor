@@ -17,9 +17,8 @@
     "TME": "Complete",
     "MMR": "pMMR",
     "CRM_status": "Negative",
-    "CRM_dist_mm": null,
-    "distal_margin_mm": 36,
-    "closest_margin_mm": null,
-    "closest_margin_desc": null,
+    "margins": [
+        {"type": "distal", "distance_mm": 36, "involved": false, "verbatim": "3.6 cm from distal resection margin"}
+    ],
     "extraction_notes": null
 }
