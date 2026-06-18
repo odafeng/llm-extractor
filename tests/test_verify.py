@@ -104,6 +104,23 @@ def test_positive_concept_not_in_report_flagged():
     assert any("not mentioned" in fl for fl in r["fields"]["EMVI"]["flags"])
 
 
+def test_omission_flagged_when_concept_discussed_but_blank():
+    # report has an MMR synoptic line but the model left MMR null -> likely omission
+    rec = {"pT": "T3", "MMR": None}
+    text = "Mismatch repair proteins MLH1, MSH2, MSH6, PMS2 retained. pT3."
+    r = V.verify(rec, text)
+    assert "MMR" in r["omissions"]
+    assert "MMR" in r["review_fields"]
+    assert r["needs_review"]
+
+
+def test_no_omission_when_concept_absent():
+    rec = {"pT": "T3", "MMR": None}
+    text = "Adenocarcinoma, pT3. Margins clear."  # never mentions mismatch repair
+    r = V.verify(rec, text)
+    assert "MMR" not in r["omissions"]
+
+
 def test_nulls_are_ignored():
     rec = {"pT": "T2", "EMVI": None, "CRM_dist_mm": None}
     r = V.verify(rec, "pT2")

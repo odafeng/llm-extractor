@@ -71,6 +71,19 @@ CONCEPT_KEYWORDS = {
     "CRM_status": ["circumferential", "radial margin", "crm"],
 }
 
+# OMISSION detection: if the report clearly discusses a concept but the model left the
+# field BLANK, that is a likely missed extraction. This was verify's biggest blind spot
+# (it only inspected filled fields), and omissions were the majority of its misses.
+OMISSION_KEYWORDS = {
+    "LVI": ["lymphovascular", "lymph-vascular", "lvi"],
+    "PNI": ["perineural", "pni"],
+    "Deposits": ["tumor deposit", "tumour deposit"],
+    "CRM_status": ["circumferential", "radial margin", "crm"],
+    "MMR": ["mismatch repair", "mlh1", "msh2", "msh6", "pms2", "dmmr", "pmmr"],
+    "TME": ["mesorect", "intactness of mesorect", "tme"],
+    "Budding": ["tumor budding", "tumour budding", "budding"],
+}
+
 NULLISH = {"", "null", "none", "n/a", "na", "nan", "not applicable"}
 
 
@@ -251,20 +264,33 @@ def verify(record: dict, text: str, review_threshold: float = 0.7) -> dict:
             "flags": flags,
         }
 
+    # omissions: field left blank while the report clearly discusses the concept
+    omissions = [
+        f
+        for f, kws in OMISSION_KEYWORDS.items()
+        if is_null(record.get(f)) and any(k in tlow for k in kws)
+    ]
+
     scored = [d["confidence"] for d in fields.values()]
     overall = round(sum(scored) / len(scored), 2) if scored else 1.0
     global_flags = [f"{fld}: {m}" for fld, m in sflags + rflags]
+    global_flags += [
+        f"{f}: left blank but report discusses the concept (possible omission)" for f in omissions
+    ]
     needs_review = (
         overall < review_threshold
         or bool(global_flags)
         or any(d["confidence"] < review_threshold for d in fields.values())
+    )
+    review_fields = sorted(
+        {f for f, d in fields.items() if d["confidence"] < review_threshold or d["flags"]}
+        | set(omissions)
     )
     return {
         "fields": fields,
         "overall_confidence": overall,
         "flags": global_flags,
         "needs_review": needs_review,
-        "review_fields": sorted(
-            f for f, d in fields.items() if d["confidence"] < review_threshold or d["flags"]
-        ),
+        "omissions": omissions,
+        "review_fields": review_fields,
     }
