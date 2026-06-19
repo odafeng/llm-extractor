@@ -66,6 +66,10 @@ Extract clinical data from the pathology report into a strict JSON format.
    - `distance_mm`: the distance, converted to mm.
    - `involved`: true if the tumor reaches/involves that margin, else false.
    - `verbatim`: the EXACT source phrase you took it from (copy it verbatim).
+   - A margin distance is often stated as the TUMOR/LESION LOCATION in the gross
+     description, e.g. "tumor located/centred X cm from the distal resection line" --- that
+     X is the `distal` (or proximal) margin distance; capture it. A distance from a POLYP
+     (not the main tumor) to a resection line is NOT a tumor margin --- ignore it.
    If the report gives no margin distance, output an empty array `[]`. `CRM_status` (the
    circumferential margin involved/clear decision) is set independently of this list.
 7. **Tumor Presence**:
