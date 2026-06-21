@@ -226,9 +226,15 @@ def create_app(db_path: str) -> Flask:
             "<div style=margin-top:10px><button>Save → next</button></div>"
         )
         values = [v for k, v in rec.items() if not k.startswith("_") and k != "margins"]
+        err = (
+            "<div class=box style='border-color:#c0392b;color:#c0392b'>"
+            "⚠️ margins JSON 無法解析 —— 未儲存,請修正後再存。</div>"
+            if request.args.get("err") == "margins"
+            else ""
+        )
         # one <form> wrapping the editable field/margin inputs AND the controls, so edits submit
         side = (
-            f"<div class=box><b>{sid}</b> <span class='tag rev'>{r['decision']}</span>"
+            err + f"<div class=box><b>{sid}</b> <span class='tag rev'>{r['decision']}</span>"
             f"<div class=fl>check: {' · '.join(sorted(review_fields))}</div></div>"
             f"<form method=post action='/save/{sid}'>"
             f"<div class=box><table><tr><th>field</th><th>value</th><th>conf</th><th>flags</th></tr>"
@@ -252,7 +258,9 @@ def create_app(db_path: str) -> Flask:
                 try:
                     rec["margins"] = json.loads(val)
                 except json.JSONDecodeError:
-                    pass  # keep original margins if the edited JSON is malformed
+                    # don't silently drop the edit + mark the case done — keep it pending
+                    # and send the reviewer back with an error to fix the JSON.
+                    return redirect(url_for("review", sid=sid, err="margins"))
             elif k.startswith("fld_"):
                 rec[k[4:]] = val
         c.execute(
@@ -275,12 +283,18 @@ def create_app(db_path: str) -> Flask:
         rows = c.execute("SELECT * FROM qc ORDER BY sid").fetchall()
         buf = io.StringIO()
         w = csv.writer(buf)
-        # `data` = the final record for every row: human-corrected if reviewed, else the
-        # original extraction — so auto-approved cases also carry their field values.
+        # `data` = the trustworthy final record only: human-corrected if reviewed, the raw
+        # extraction for auto-approved rows, BLANK for still-pending rows (so unreviewed
+        # flagged values are never exported as if final).
         cols = ["sid", "decision", "status", "review_fields", "note", "reviewed_at"]
         w.writerow(cols + ["data"])
         for r in rows:
-            data = r["corrected"] if r["corrected"] is not None else r["record"]
+            if r["corrected"] is not None:
+                data = r["corrected"]
+            elif r["status"] == "auto":
+                data = r["record"]
+            else:
+                data = ""  # pending / not yet reviewed
             w.writerow([r[k] for k in cols] + [data])
         out = io.BytesIO(buf.getvalue().encode())
         out.seek(0)
