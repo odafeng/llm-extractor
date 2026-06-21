@@ -222,6 +222,28 @@ python pipeline.py case.json --json               # 機器可讀輸出
 `extract_patho_report.py` 整批跑完，輸出的 Excel 會多出 `overall_confidence`、
 `needs_review`、`review_fields`、`flags` 四欄，且需複核的列已排到最前面，可直接當複核佇列。
 
+## Ensemble QC（多模型一致性 + 驗證，無需 gold standard）
+
+`verify.py` 用 grounding 抓「模型有沒有依據」；`ensemble.py` 再加一個獨立訊號——
+**讓多個地端模型各自抽取、比對欄位是否一致**——兩者合併成單一 AUTO-APPROVE / REVIEW 判決。
+原理：單一模型的信心校準很差（會「自信地錯」）；但「沒有依據」與「模型彼此不同意」是兩個
+互補的免-gold 訊號，合起來能攔下大多數真錯，全程地端。
+
+```bash
+export ENSEMBLE_MODELS="gemma4:31b,qwen2.5:72b,phi4"   # 預設值
+python ensemble.py case.json        # 輸出 decision / 不一致欄位 / 理由 / 各模型投票
+```
+
+```python
+from ensemble import run_ensemble, ensemble_verdict
+v = run_ensemble(report_text)                  # 線上：跑模型 + 判決
+v = ensemble_verdict([rec_a, rec_b], report_text)   # 純判決（可測、不碰網路）
+# v["decision"] -> "AUTO-APPROVE" | "REVIEW";  v["disagree_fields"] / v["review_fields"] / v["reasons"]
+```
+
+判決邏輯（`consensus` / `ensemble_verdict`）為純函式、有單元測試（`tests/test_ensemble.py`）；
+只有 `extract_with` / `run_ensemble` 會連 Ollama。一致且皆有依據 → 自動放行；其餘進人工複核。
+
 ## 開發
 
 本專案使用 Ruff（lint + format）、Pyright（type check）、pytest、pre-commit 與 GitHub Actions CI。
