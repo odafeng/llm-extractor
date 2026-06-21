@@ -27,7 +27,8 @@ load_dotenv(".env.local")
 
 # ================= 1. API 設定區 =================
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:14b")
+# benchmark champion (~20GB VRAM); lightweight fallback: OLLAMA_MODEL=qwen2.5:14b
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:31b")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 USE_GPT = True if OPENAI_API_KEY else False
 USE_CLOUD_ONLY = os.getenv("USE_CLOUD_ONLY", "0") == "1"

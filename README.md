@@ -31,7 +31,8 @@ margin 要分辨 CRM／distal／未指明、淋巴結要跨群組加總、addend
 - **臨床導向的萃取規則**：margin 消歧義（CRM / Distal / closest margin）、淋巴結分組加總、
   報告區段衝突解決（Synoptic > Gross、Addendum > 原文）、Tumor budding 採 ITBCC 2016 標準、
   EMVI 與 LVI 分開判讀。
-- **地端 + 雲端雙軌**：預設用地端 Ollama（`qwen2.5:14b`）；失敗時自動 fallback 雲端 GPT。
+- **地端 + 雲端雙軌**：預設用地端 Ollama（`gemma4:31b`，benchmark 冠軍，需約 20GB VRAM；
+  卡較小可用 `OLLAMA_MODEL=qwen2.5:14b` 輕量備選）；失敗時自動 fallback 雲端 GPT。
   可用 `USE_CLOUD_ONLY=1` 強制只用雲端。（背景見 [ADR-0001](docs/adr/0001-local-first-llm-with-cloud-fallback.md)）
 - **多模型橫向比較**：`LLM_validation.py` 可同時跑 GPT-5.1 / Claude / Gemini，輸出到同一份 Excel 的不同分頁。
 - **可信度驗證（verify 階段）**：`verify.py` 在萃取後做三項檢查（不需額外 LLM 呼叫）——
@@ -187,6 +188,8 @@ pip install -r requirements.txt
 地端推論需另外安裝 [Ollama](https://ollama.com/) 並拉取模型：
 
 ```bash
+ollama pull gemma4:31b      # 預設（benchmark 冠軍，約 20GB VRAM）
+# 卡較小可改用輕量備選：
 ollama pull qwen2.5:14b
 ```
 
@@ -204,7 +207,7 @@ cp .env.local.example .env.local   # 再填入你的金鑰
 | `ANTHROPIC_API_KEY` | Claude（多模型比較用） | （無） |
 | `GEMINI_API_KEY` | Gemini（多模型比較用） | （無） |
 | `OLLAMA_BASE_URL` | 地端 Ollama 位址 | `http://localhost:11434/v1` |
-| `OLLAMA_MODEL` | 地端模型名稱 | `qwen2.5:14b` |
+| `OLLAMA_MODEL` | 地端模型名稱（輕量備選：`qwen2.5:14b`） | `gemma4:31b` |
 | `USE_CLOUD_ONLY` | 設 `1` 則強制只用雲端 | `0` |
 
 ## 使用方式
