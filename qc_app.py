@@ -171,9 +171,10 @@ def create_app(db_path: str) -> Flask:
         )
         return _page(cards + "<div style=margin:14px></div>" + table)
 
-    def _render(sid, overrides=None, margins_raw=None, note=None, err=""):
-        """Render the review page. On a failed save, `overrides`/`margins_raw`/`note` carry
-        the reviewer's just-submitted edits so nothing is lost while the row stays pending."""
+    def _render(sid, overrides=None, margins_raw=None, note=None, action=None, err=""):
+        """Render the review page. On a failed save, `overrides`/`margins_raw`/`note`/`action`
+        carry the reviewer's just-submitted edits so nothing is lost while the row stays
+        pending."""
         overrides = overrides or {}
         c = db()
         r = c.execute("SELECT * FROM qc WHERE sid=?", (sid,)).fetchone()
@@ -224,11 +225,17 @@ def create_app(db_path: str) -> Flask:
                 f"<td colspan=3>{flag_txt}<textarea name=fld_margins rows=4>{mj}</textarea></td></tr>"
             )
         note_val = note if note is not None else (r["note"] or "")
+
+        def _opt(val, label):
+            return f"<option value={val} {'selected' if action == val else ''}>{label}</option>"
+
+        sel = (
+            _opt("approved", "✅ Approve")
+            + _opt("corrected", "✏️ Correct (edits above)")
+            + _opt("rejected", "❌ Reject / indeterminate")
+        )
         controls = (
-            "<label>Decision</label>"
-            "<select name=action><option value=approved>✅ Approve</option>"
-            "<option value=corrected>✏️ Correct (edits above)</option>"
-            "<option value=rejected>❌ Reject / indeterminate</option></select>"
+            f"<label>Decision</label><select name=action>{sel}</select>"
             f"<label>note</label><textarea name=note rows=2>{html.escape(note_val)}</textarea>"
             "<div style=margin-top:10px><button>Save → next</button></div>"
         )
@@ -281,6 +288,7 @@ def create_app(db_path: str) -> Flask:
                         overrides=overrides,
                         margins_raw=val,
                         note=request.form.get("note", ""),
+                        action=request.form.get("action"),
                         err="margins",
                     )
             elif k.startswith("fld_"):

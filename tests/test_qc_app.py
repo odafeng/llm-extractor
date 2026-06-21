@@ -144,7 +144,7 @@ def test_malformed_margin_json_keeps_pending_and_preserves_edits(tmp_path):
     res = cl.post(
         "/save/R2",
         data={
-            "action": "corrected",
+            "action": "rejected",
             "fld_tumor_size_cm": "7",
             "fld_margins": "{bad json,",
             "note": "wip",
@@ -154,5 +154,6 @@ def test_malformed_margin_json_keeps_pending_and_preserves_edits(tmp_path):
     assert res.status_code == 200  # re-rendered, not redirected away
     assert "margins JSON" in body  # error banner shown
     assert "value='7'" in body and "{bad json," in body and "wip" in body  # edits preserved
+    assert "value=rejected selected" in body  # the chosen decision is preserved too
     row = sqlite3.connect(p).execute("SELECT status, corrected FROM qc WHERE sid='R2'").fetchone()
     assert row[0] == "pending" and row[1] is None  # not marked done, nothing saved
