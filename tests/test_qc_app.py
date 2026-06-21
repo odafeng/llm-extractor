@@ -125,3 +125,23 @@ def test_export_includes_record_data_for_auto_rows(tmp_path):
     rows = list(_csv.DictReader(out.splitlines()))
     r1 = next(r for r in rows if r["sid"] == "R1")
     assert "data" in r1 and "T3" in r1["data"]  # auto-approved row still carries its data
+
+
+def test_export_blanks_pending_rows(tmp_path):
+    import csv as _csv
+
+    p = _db(tmp_path)  # R2 is pending
+    out = Q.create_app(p).test_client().get("/export").data.decode()
+    r2 = next(r for r in _csv.DictReader(out.splitlines()) if r["sid"] == "R2")
+    assert r2["data"] == ""  # unreviewed -> not exported as final data
+
+
+def test_malformed_margin_json_keeps_pending(tmp_path):
+    import sqlite3
+
+    p = _db(tmp_path)
+    cl = Q.create_app(p).test_client()
+    res = cl.post("/save/R2", data={"action": "corrected", "fld_margins": "{bad json,"})
+    assert res.status_code == 302 and "err=margins" in res.headers["Location"]
+    row = sqlite3.connect(p).execute("SELECT status, corrected FROM qc WHERE sid='R2'").fetchone()
+    assert row[0] == "pending" and row[1] is None  # not marked done, edit not saved
