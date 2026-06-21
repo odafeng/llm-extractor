@@ -180,43 +180,59 @@ def create_app(db_path: str) -> Flask:
         rec = json.loads(r["record"])
         ver = json.loads(r["verify"])
         review_fields = set(json.loads(r["review_fields"]))
+        # field rows over the UNION of extracted keys and flagged review fields, so omitted
+        # fields (blank in the record, or only found by another model) still get an input.
+        scalar = [k for k in rec if not k.startswith("_") and k != "margins"]
+        extra = [
+            f
+            for f in sorted(review_fields)
+            if f not in scalar and f != "margins" and not f.startswith("margins")
+        ]
         rows = ""
-        for f, v in rec.items():
-            if f.startswith("_") or f == "margins":
-                continue
+        for f in scalar + extra:
+            v = rec.get(f, "")
             fd = ver.get("fields", {}).get(f, {})
             conf = fd.get("confidence")
             flags = "; ".join(fd.get("flags", []))
-            cls = "bad" if f in review_fields else "ok"
+            flag_me = f in review_fields or f in extra
+            cls = "bad" if flag_me else "ok"
             inp = (
                 f"<input name='fld_{f}' value='{html.escape(str(v))}'>"
-                if f in review_fields
+                if flag_me
                 else html.escape(str(v))
             )
             rows += (
                 f"<tr><td class={cls}>{f}</td><td>{inp}</td>"
                 f"<td>{'' if conf is None else conf}</td><td class=fl>{html.escape(flags)}</td></tr>"
             )
+        # margins: show why flagged + make the list editable (JSON), so margin QC is completable
         margins = rec.get("margins")
-        mrow = (
-            f"<tr><td>margins</td><td colspan=3>{html.escape(json.dumps(margins, ensure_ascii=False))}</td></tr>"
-            if margins
-            else ""
-        )
-        form = (
-            f"<form method=post action='/save/{sid}'><label>Decision</label>"
+        mflags = ver.get("margin_flags", [])
+        margin_flagged = bool(mflags) or any(str(f).startswith("margins") for f in review_fields)
+        mrow = ""
+        if margins is not None or margin_flagged:
+            mj = html.escape(json.dumps(margins or [], ensure_ascii=False, indent=1))
+            flag_txt = f"<div class=fl>{html.escape('; '.join(mflags))}</div>" if mflags else ""
+            mrow = (
+                f"<tr><td class={'bad' if margin_flagged else 'ok'}>margins</td>"
+                f"<td colspan=3>{flag_txt}<textarea name=fld_margins rows=4>{mj}</textarea></td></tr>"
+            )
+        controls = (
+            "<label>Decision</label>"
             "<select name=action><option value=approved>✅ Approve</option>"
             "<option value=corrected>✏️ Correct (edits above)</option>"
             "<option value=rejected>❌ Reject / indeterminate</option></select>"
             f"<label>note</label><textarea name=note rows=2>{html.escape(r['note'] or '')}</textarea>"
-            "<div style=margin-top:10px><button>Save → next</button></div></form>"
+            "<div style=margin-top:10px><button>Save → next</button></div>"
         )
         values = [v for k, v in rec.items() if not k.startswith("_") and k != "margins"]
+        # one <form> wrapping the editable field/margin inputs AND the controls, so edits submit
         side = (
             f"<div class=box><b>{sid}</b> <span class='tag rev'>{r['decision']}</span>"
             f"<div class=fl>check: {' · '.join(sorted(review_fields))}</div></div>"
+            f"<form method=post action='/save/{sid}'>"
             f"<div class=box><table><tr><th>field</th><th>value</th><th>conf</th><th>flags</th></tr>"
-            f"{rows}{mrow}</table></div><div class=box>{form}</div>"
+            f"{rows}{mrow}</table></div><div class=box>{controls}</div></form>"
         )
         return _page(
             f"<p><a href='/'>← queue</a></p><div class=rep>"
@@ -232,7 +248,12 @@ def create_app(db_path: str) -> Flask:
             return redirect(url_for("index"))
         rec = json.loads(r["record"])
         for k, val in request.form.items():
-            if k.startswith("fld_"):
+            if k == "fld_margins":
+                try:
+                    rec["margins"] = json.loads(val)
+                except json.JSONDecodeError:
+                    pass  # keep original margins if the edited JSON is malformed
+            elif k.startswith("fld_"):
                 rec[k[4:]] = val
         c.execute(
             "UPDATE qc SET status=?, corrected=?, note=?, reviewed_at=? WHERE sid=?",
@@ -254,10 +275,13 @@ def create_app(db_path: str) -> Flask:
         rows = c.execute("SELECT * FROM qc ORDER BY sid").fetchall()
         buf = io.StringIO()
         w = csv.writer(buf)
-        cols = ["sid", "decision", "status", "review_fields", "corrected", "note", "reviewed_at"]
-        w.writerow(cols)
+        # `data` = the final record for every row: human-corrected if reviewed, else the
+        # original extraction — so auto-approved cases also carry their field values.
+        cols = ["sid", "decision", "status", "review_fields", "note", "reviewed_at"]
+        w.writerow(cols + ["data"])
         for r in rows:
-            w.writerow([r[k] for k in cols])
+            data = r["corrected"] if r["corrected"] is not None else r["record"]
+            w.writerow([r[k] for k in cols] + [data])
         out = io.BytesIO(buf.getvalue().encode())
         out.seek(0)
         return send_file(

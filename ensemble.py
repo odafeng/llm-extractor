@@ -49,8 +49,22 @@ def _norm(value) -> str:
     return str(value).strip().lower()
 
 
+def _involved(value) -> str:
+    """Normalise a margin 'involved' flag for agreement comparison."""
+    if value in (True, 1, "1", "yes", "true", "True"):
+        return "involved"
+    if value in (False, 0, "0", "no", "false", "False"):
+        return "clear"
+    return ""  # unknown / not stated
+
+
 def _margin_closest(record: dict):
-    """Reduce a record's margin list to the clinically decisive (distance, axis) pair."""
+    """Reduce a record's margin list to the clinically decisive (distance, axis, involved).
+
+    ``involved`` is part of the tuple so that two models which agree on the closest
+    distance/axis but disagree on whether it is involved (i.e. the positive-vs-negative
+    margin decision) are still flagged as disagreeing by ``consensus``.
+    """
     cand = []
     for m in record.get("margins") or []:
         if not isinstance(m, dict) or m.get("distance_mm") is None:
@@ -60,11 +74,13 @@ def _margin_closest(record: dict):
         except (TypeError, ValueError):
             continue
         axis = str(m.get("type", "")).strip().lower()
-        cand.append((dist, axis if axis in _DIRECTIONAL else "unspecified"))
+        cand.append(
+            (dist, axis if axis in _DIRECTIONAL else "unspecified", _involved(m.get("involved")))
+        )
     if not cand:
-        return ("", "")
-    dist, axis = min(cand, key=lambda c: c[0])
-    return (round(dist, 1), axis)
+        return ("", "", "")
+    dist, axis, involved = min(cand, key=lambda c: c[0])
+    return (round(dist, 1), axis, involved)
 
 
 def consensus(records: list[dict]) -> dict:

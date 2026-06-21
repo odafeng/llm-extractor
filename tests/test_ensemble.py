@@ -51,6 +51,23 @@ def test_consensus_margins_compared_by_closest():
     assert E.consensus(same)["margins"]["agree"] is True
 
 
+def test_consensus_flags_involvement_disagreement():
+    # same closest distance + axis, but disagree on involved (positive vs negative margin)
+    recs = [
+        {
+            "margins": [
+                {"type": "circumferential", "distance_mm": 1, "involved": True, "verbatim": "a"}
+            ]
+        },
+        {
+            "margins": [
+                {"type": "circumferential", "distance_mm": 1, "involved": False, "verbatim": "b"}
+            ]
+        },
+    ]
+    assert E.consensus(recs)["margins"]["agree"] is False
+
+
 def test_file_id_and_notes_ignored_in_consensus():
     recs = [
         {"pT": "T3", "file_id": "P001", "extraction_notes": "foo"},
