@@ -136,12 +136,23 @@ def test_export_blanks_pending_rows(tmp_path):
     assert r2["data"] == ""  # unreviewed -> not exported as final data
 
 
-def test_malformed_margin_json_keeps_pending(tmp_path):
+def test_malformed_margin_json_keeps_pending_and_preserves_edits(tmp_path):
     import sqlite3
 
     p = _db(tmp_path)
     cl = Q.create_app(p).test_client()
-    res = cl.post("/save/R2", data={"action": "corrected", "fld_margins": "{bad json,"})
-    assert res.status_code == 302 and "err=margins" in res.headers["Location"]
+    res = cl.post(
+        "/save/R2",
+        data={
+            "action": "corrected",
+            "fld_tumor_size_cm": "7",
+            "fld_margins": "{bad json,",
+            "note": "wip",
+        },
+    )
+    body = res.data.decode()
+    assert res.status_code == 200  # re-rendered, not redirected away
+    assert "margins JSON" in body  # error banner shown
+    assert "value='7'" in body and "{bad json," in body and "wip" in body  # edits preserved
     row = sqlite3.connect(p).execute("SELECT status, corrected FROM qc WHERE sid='R2'").fetchone()
-    assert row[0] == "pending" and row[1] is None  # not marked done, edit not saved
+    assert row[0] == "pending" and row[1] is None  # not marked done, nothing saved

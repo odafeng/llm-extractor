@@ -171,8 +171,10 @@ def create_app(db_path: str) -> Flask:
         )
         return _page(cards + "<div style=margin:14px></div>" + table)
 
-    @app.route("/r/<sid>")
-    def review(sid):
+    def _render(sid, overrides=None, margins_raw=None, note=None, err=""):
+        """Render the review page. On a failed save, `overrides`/`margins_raw`/`note` carry
+        the reviewer's just-submitted edits so nothing is lost while the row stays pending."""
+        overrides = overrides or {}
         c = db()
         r = c.execute("SELECT * FROM qc WHERE sid=?", (sid,)).fetchone()
         if not r:
@@ -190,7 +192,7 @@ def create_app(db_path: str) -> Flask:
         ]
         rows = ""
         for f in scalar + extra:
-            v = rec.get(f, "")
+            v = overrides.get(f, rec.get(f, ""))
             fd = ver.get("fields", {}).get(f, {})
             conf = fd.get("confidence")
             flags = "; ".join(fd.get("flags", []))
@@ -210,31 +212,36 @@ def create_app(db_path: str) -> Flask:
         mflags = ver.get("margin_flags", [])
         margin_flagged = bool(mflags) or any(str(f).startswith("margins") for f in review_fields)
         mrow = ""
-        if margins is not None or margin_flagged:
-            mj = html.escape(json.dumps(margins or [], ensure_ascii=False, indent=1))
+        if margins is not None or margin_flagged or margins_raw is not None:
+            mj = (
+                html.escape(margins_raw)
+                if margins_raw is not None
+                else html.escape(json.dumps(margins or [], ensure_ascii=False, indent=1))
+            )
             flag_txt = f"<div class=fl>{html.escape('; '.join(mflags))}</div>" if mflags else ""
             mrow = (
                 f"<tr><td class={'bad' if margin_flagged else 'ok'}>margins</td>"
                 f"<td colspan=3>{flag_txt}<textarea name=fld_margins rows=4>{mj}</textarea></td></tr>"
             )
+        note_val = note if note is not None else (r["note"] or "")
         controls = (
             "<label>Decision</label>"
             "<select name=action><option value=approved>✅ Approve</option>"
             "<option value=corrected>✏️ Correct (edits above)</option>"
             "<option value=rejected>❌ Reject / indeterminate</option></select>"
-            f"<label>note</label><textarea name=note rows=2>{html.escape(r['note'] or '')}</textarea>"
+            f"<label>note</label><textarea name=note rows=2>{html.escape(note_val)}</textarea>"
             "<div style=margin-top:10px><button>Save → next</button></div>"
         )
         values = [v for k, v in rec.items() if not k.startswith("_") and k != "margins"]
-        err = (
+        banner = (
             "<div class=box style='border-color:#c0392b;color:#c0392b'>"
-            "⚠️ margins JSON 無法解析 —— 未儲存,請修正後再存。</div>"
-            if request.args.get("err") == "margins"
+            "⚠️ margins JSON 無法解析 —— 未儲存,你剛剛的編輯已保留,請修正後再存。</div>"
+            if err == "margins"
             else ""
         )
         # one <form> wrapping the editable field/margin inputs AND the controls, so edits submit
         side = (
-            err + f"<div class=box><b>{sid}</b> <span class='tag rev'>{r['decision']}</span>"
+            banner + f"<div class=box><b>{sid}</b> <span class='tag rev'>{r['decision']}</span>"
             f"<div class=fl>check: {' · '.join(sorted(review_fields))}</div></div>"
             f"<form method=post action='/save/{sid}'>"
             f"<div class=box><table><tr><th>field</th><th>value</th><th>conf</th><th>flags</th></tr>"
@@ -245,6 +252,10 @@ def create_app(db_path: str) -> Flask:
             f"<div class=txt>{_highlight(r['report_text'], values)}</div>"
             f"<div class=side>{side}</div></div>"
         )
+
+    @app.route("/r/<sid>")
+    def review(sid):
+        return _render(sid)
 
     @app.route("/save/<sid>", methods=["POST"])
     def save(sid):
@@ -258,9 +269,20 @@ def create_app(db_path: str) -> Flask:
                 try:
                     rec["margins"] = json.loads(val)
                 except json.JSONDecodeError:
-                    # don't silently drop the edit + mark the case done — keep it pending
-                    # and send the reviewer back with an error to fix the JSON.
-                    return redirect(url_for("review", sid=sid, err="margins"))
+                    # don't silently drop edits + mark the case done — re-render with the
+                    # reviewer's submitted values preserved, row stays pending.
+                    overrides = {
+                        kk[4:]: vv
+                        for kk, vv in request.form.items()
+                        if kk.startswith("fld_") and kk != "fld_margins"
+                    }
+                    return _render(
+                        sid,
+                        overrides=overrides,
+                        margins_raw=val,
+                        note=request.form.get("note", ""),
+                        err="margins",
+                    )
             elif k.startswith("fld_"):
                 rec[k[4:]] = val
         c.execute(
