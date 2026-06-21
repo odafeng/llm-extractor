@@ -61,3 +61,67 @@ def test_routes_and_save_roundtrip(tmp_path):
     assert row[0] == "corrected"
     assert json.loads(row[1])["tumor_size_cm"] == ""
     assert row[2] == "no size"
+
+
+# ---- Codex review fixes ----
+
+OMITTED = {
+    "file_id": "R3",
+    "report_text": "Adenocarcinoma, pT3. Mismatch repair proteins retained.",
+    "record": {"pT": "T3"},  # MMR omitted while report discusses it -> review-only field
+}
+
+
+def test_review_renders_input_for_omitted_field(tmp_path):
+    p = str(tmp_path / "qc.db")
+    Q.build_db(p, [OMITTED])
+    html = Q.create_app(p).test_client().get("/r/R3").data.decode()
+    assert "MMR" in html
+    assert "fld_MMR" in html  # an editable input exists for the omitted field
+
+
+def test_margins_editable_and_saved(tmp_path):
+    import sqlite3
+
+    item = {
+        "file_id": "R4",
+        "report_text": "CRM 1 mm, involved.",
+        "record": {
+            "pT": "T3",
+            "margins": [
+                {
+                    "type": "circumferential",
+                    "distance_mm": 99,
+                    "involved": False,
+                    "verbatim": "nope",
+                }
+            ],
+        },
+    }
+    p = str(tmp_path / "qc.db")
+    Q.build_db(p, [item])
+    cl = Q.create_app(p).test_client()
+    assert "fld_margins" in cl.get("/r/R4").data.decode()
+    new = json.dumps(
+        [
+            {
+                "type": "circumferential",
+                "distance_mm": 1,
+                "involved": True,
+                "verbatim": "CRM 1 mm, involved",
+            }
+        ]
+    )
+    cl.post("/save/R4", data={"action": "corrected", "fld_margins": new})
+    saved = sqlite3.connect(p).execute("SELECT corrected FROM qc WHERE sid='R4'").fetchone()[0]
+    assert json.loads(saved)["margins"][0]["distance_mm"] == 1
+
+
+def test_export_includes_record_data_for_auto_rows(tmp_path):
+    import csv as _csv
+
+    p = _db(tmp_path)  # R1 auto, R2 pending
+    out = Q.create_app(p).test_client().get("/export").data.decode()
+    rows = list(_csv.DictReader(out.splitlines()))
+    r1 = next(r for r in rows if r["sid"] == "R1")
+    assert "data" in r1 and "T3" in r1["data"]  # auto-approved row still carries its data
